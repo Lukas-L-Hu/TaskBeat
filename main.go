@@ -19,8 +19,8 @@ type Task struct {
 func concealPHI(task *Task) {
 	if task.ContainsPHI {
 		if name, ok := task.Payload["patientName"].(string); ok {
-			task.Payload["patientName"] = "[Concealed]"
-			log.Printf("TaskBeat: Terminated patientName %s for Task ID=%s\n", name, task.ID)
+			task.Payload["patientName"] = "[CONCEALED]"
+			log.Printf("TaskBeat: Terminated patient name %s for Task ID=%s\n", name, task.ID)
 		}
 	}
 }
