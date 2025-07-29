@@ -25,6 +25,24 @@ func TestRedactPHI(t *testing.T) {
 	}
 }
 
+func TestRedactPHI2(t *testing.T) {
+	task := Task{
+		ID:          "test2",
+		ContainsPHI: true,
+		Payload: map[string]interface{}{
+			"patientName": "Daniel",
+			"diagnosis":   "Bronchitis",
+			"Address":     "2890 Halfview Court San Bruno, CA",
+		},
+	}
+
+	concealPHI(&task)
+
+	if task.Payload["diagnosis"] != "Bronchitis" {
+		t.Errorf("Expected patient diagnosis to be concealed, got %v", task.Payload["diagnosis"])
+	}
+}
+
 func TestRedactPHI_NoPHI(t *testing.T) {
 	task := Task{
 		ID:          "test2",

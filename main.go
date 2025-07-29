@@ -63,7 +63,7 @@ func queueHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.HandleFunc("/enqueue", queueHandler)
+	http.HandleFunc("/queue", queueHandler)
 	fmt.Println("TaskBeat running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
