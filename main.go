@@ -17,10 +17,26 @@ type Task struct {
 }
 
 func concealPHI(task *Task) {
-	if task.ContainsPHI {
-		if name, ok := task.Payload["patientName"].(string); ok {
-			task.Payload["patientName"] = "[CONCEALED]"
-			log.Printf("TaskBeat: Terminated patient name %s for Task ID=%s\n", name, task.ID)
+	if !task.ContainsPHI {
+		return
+	}
+
+	infoKeys := []string{
+		"patientName",
+		"ssn",
+		"dob",
+		"address",
+		"email",
+		"phone",
+		"insuranceNumber",
+		"medicalRecordNumber",
+		"diagnosis",
+	}
+
+	for _, key := range infoKeys {
+		if name, ok := task.Payload[key].(string); ok {
+			task.Payload[key] = "[CONCEALED]"
+			log.Printf("TaskBeat: Concealed %s for Task ID %s\n", name, task.ID)
 		}
 	}
 }
