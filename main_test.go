@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -66,5 +68,33 @@ func TestRedactPHI_NoPHI(t *testing.T) {
 
 	if task.Payload["patientName"] != "Bob" {
 		t.Errorf("Expected patientName to remain unchanged, got %v", task.Payload["patientName"])
+	}
+}
+
+func TestAuditLog_Success(t *testing.T) {
+	task := Task{
+		ID:          "random_test",
+		ContainsPHI: false,
+		Payload: map[string]interface{}{
+			"patientName": "Randy",
+		},
+	}
+
+	logFile := "taskbeat_audit.log"
+	os.Remove(logFile)
+	defer os.Remove(logFile)
+
+	err := auditLog(task)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	data, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("Could not read log file: %v", err)
+	}
+
+	if !strings.Contains(string(data), "TaskID=random_test") {
+		t.Errorf("Log entry missing expected task ID: got %s", string(data))
 	}
 }
