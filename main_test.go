@@ -1,6 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -96,5 +101,43 @@ func TestAuditLog_Success(t *testing.T) {
 
 	if !strings.Contains(string(data), "TaskID=random_test") {
 		t.Errorf("Log entry missing expected task ID: got %s", string(data))
+	}
+}
+
+func TestQueueHandler_Success(t *testing.T) {
+	task := Task{
+		ID:          "task1",
+		ContainsPHI: true,
+		Payload: map[string]interface{}{
+			"patientName": "Angela",
+			"phone":       "9491203489",
+		},
+	}
+
+	body, _ := json.Marshal(task)
+	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	queueHandler(rec, req)
+
+	result := rec.Result()
+	defer result.Body.Close()
+
+	if result.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200 OK, got %d", result.StatusCode)
+	}
+	respBody, _ := io.ReadAll(result.Body)
+	var returned Task
+	err := json.Unmarshal(respBody, &returned)
+	if err != nil {
+		t.Fatalf("Response is not a valid JSON: %v", err)
+	}
+
+	if returned.ID != task.ID {
+		t.Errorf("Expected ID %s, got %s", task.ID, returned.ID)
+	}
+
+	if returned.Payload["patientName"] != "[CONCEALED]" {
+		t.Errorf("Expected patient name to be concealed but got %v", returned.Payload["patientName"])
 	}
 }
