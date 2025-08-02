@@ -34,9 +34,9 @@ func concealPHI(task *Task) {
 	}
 
 	for _, key := range infoKeys {
-		if name, ok := task.Payload[key].(string); ok {
+		if _, ok := task.Payload[key].(string); ok {
 			task.Payload[key] = "[CONCEALED]"
-			log.Printf("TaskBeat: Concealed %s for Task ID %s\n", name, task.ID)
+			log.Printf("TaskBeat: Concealed %s for Task ID %s\n", key, task.ID)
 		}
 	}
 }

@@ -141,3 +141,50 @@ func TestQueueHandler_Success(t *testing.T) {
 		t.Errorf("Expected patient name to be concealed but got %v", returned.Payload["patientName"])
 	}
 }
+
+func TestQueueHandler_Failure(t *testing.T) {
+	task := Task{
+		ContainsPHI: true,
+		Payload: map[string]interface{}{
+			"patientName": "Brad",
+		},
+	}
+
+	body, _ := json.Marshal(task)
+	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	queueHandler(rec, req)
+
+	result := rec.Result()
+	defer result.Body.Close()
+
+	if result.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", result.StatusCode)
+	}
+
+	respBody, _ := io.ReadAll(result.Body)
+	if !strings.Contains(string(respBody), "Missing") {
+		t.Errorf("Didn't get the expected error message")
+	}
+}
+
+func TestQueueHandler_JSONFailure(t *testing.T) {
+	invalidJSON := "har har"
+	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader([]byte(invalidJSON)))
+	rec := httptest.NewRecorder()
+
+	queueHandler(rec, req)
+
+	result := rec.Result()
+	defer result.Body.Close()
+
+	if result.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", result.StatusCode)
+	}
+
+	respBody, _ := io.ReadAll(result.Body)
+	if !strings.Contains(string(respBody), "Invalid") {
+		t.Errorf("Didn't get the expected error message")
+	}
+}
