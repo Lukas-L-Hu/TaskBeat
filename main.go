@@ -17,6 +17,7 @@ type Task struct {
 }
 
 func concealPHI(task *Task) {
+	// This conceals the protected health information (PHI)
 	if !task.ContainsPHI {
 		return
 	}
@@ -42,6 +43,7 @@ func concealPHI(task *Task) {
 }
 
 func auditLog(task Task) error {
+	// This logs each entry and records the time, ID, and if it contains PHI
 	f, err := os.OpenFile("taskbeat_audit.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -53,6 +55,7 @@ func auditLog(task Task) error {
 }
 
 func queueHandler(w http.ResponseWriter, r *http.Request) {
+	// Handles incoming POST requests to the queue and it expects a JSON that contains a Task object.
 	var task Task
 	err := json.NewDecoder(r.Body).Decode(&task)
 	if err != nil {
@@ -79,6 +82,7 @@ func queueHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Runs everything
 	http.HandleFunc("/queue", queueHandler)
 	fmt.Println("TaskBeat running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
