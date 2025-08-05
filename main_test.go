@@ -112,6 +112,20 @@ func TestAuditLog_Failure(t *testing.T) {
 	}
 }
 
+func TestAuditLog_Failure2(t *testing.T) {
+	task := Task{
+		ID: "test",
+	}
+	err := auditLog(task)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	data, err := os.ReadFile("random")
+	if err == nil {
+		t.Fatalf("Wasn't supposed to be able to read the given file, but got %s", data)
+	}
+}
+
 func TestQueueHandler_Success(t *testing.T) {
 	task := Task{
 		ID:          "task1",

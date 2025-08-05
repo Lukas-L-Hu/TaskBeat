@@ -45,7 +45,7 @@ func concealPHI(task *Task) {
 func auditLog(task Task) error {
 	// This logs each entry and records the time, ID, and if it contains PHI
 	if task.ID == "" {
-		return fmt.Errorf("Task ID is missing.")
+		return fmt.Errorf("Task ID is missing")
 	}
 	f, err := os.OpenFile("taskbeat_audit.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
