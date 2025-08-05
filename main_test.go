@@ -104,6 +104,14 @@ func TestAuditLog_Success(t *testing.T) {
 	}
 }
 
+func TestAuditLog_Failure(t *testing.T) {
+	task := Task{}
+	err := auditLog(task)
+	if err == nil {
+		t.Fatalf("Expected an error due to no Task ID, but got nothing.")
+	}
+}
+
 func TestQueueHandler_Success(t *testing.T) {
 	task := Task{
 		ID:          "task1",
