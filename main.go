@@ -7,7 +7,11 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"go.etcd.io/bbolt"
 )
+
+var db *bbolt.DB
 
 type Task struct {
 	ID          string                 `json:"id"`
@@ -80,12 +84,33 @@ func queueHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("TaskBeat: Failed audit log: %v\n", err)
 	}
 
+	err = db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("Tasks"))
+		data, _ := json.Marshal(task)
+		return b.Put([]byte(task.ID), data)
+	})
+
+	if err != nil {
+		http.Error(w, "Failed to save task", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(task)
 }
 
 func main() {
 	// Runs everything
+	var err error
+	db, err = bbolt.Open("taskbeat.db", 0600, nil)
+	if err != nil {
+		log.Fatalf("Couldn't open db: %v", err)
+	}
+	defer db.Close()
+	db.Update(func(tx *bbolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte("Tasks"))
+		return err
+	})
 	http.HandleFunc("/queue", queueHandler)
 	fmt.Println("TaskBeat running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))

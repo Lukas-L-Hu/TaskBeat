@@ -7,8 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	bolt "go.etcd.io/bbolt"
 )
 
 func TestRedactPHI(t *testing.T) {
@@ -127,6 +131,9 @@ func TestAuditLog_Failure2(t *testing.T) {
 }
 
 func TestQueueHandler_Success(t *testing.T) {
+	db = setupTestDB(t)
+	defer db.Close()
+
 	task := Task{
 		ID:          "task1",
 		ContainsPHI: true,
@@ -208,5 +215,75 @@ func TestQueueHandler_JSONFailure(t *testing.T) {
 	respBody, _ := io.ReadAll(result.Body)
 	if !strings.Contains(string(respBody), "Invalid") {
 		t.Errorf("Didn't get the expected error message")
+	}
+}
+
+func setupTestDB(t *testing.T) *bolt.DB {
+	t.Helper()
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	testDB, err := bolt.Open(dbPath, 0600, nil)
+	if err != nil {
+		t.Fatalf("Failed to open test DB: %v", err)
+	}
+	err = testDB.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte("Tasks"))
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to create bucket: %v", err)
+	}
+	return testDB
+}
+
+func TestQueueHandler_DBIntegration(t *testing.T) {
+	db = setupTestDB(t)
+	defer db.Close()
+
+	task := Task{
+		ID:          "t1",
+		ContainsPHI: true,
+		Payload: map[string]interface{}{
+			"patientName": "Angela",
+			"phone":       "8089007171",
+		},
+		CreatedAt: time.Now(),
+	}
+	body, _ := json.Marshal(task)
+
+	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	queueHandler(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200 OK, got %d", res.StatusCode)
+	}
+
+	respBody, _ := io.ReadAll(res.Body)
+	var returned Task
+	if err := json.Unmarshal(respBody, &returned); err != nil {
+		t.Fatalf("Invalid JSON response: %v", err)
+	}
+
+	// Checks the PHI redaction
+	if returned.Payload["patientName"] != "[CONCEALED]" {
+		t.Errorf("Expected patientName to be concealed, got %v", returned.Payload["patientName"])
+	}
+
+	// Check if in DB
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Tasks"))
+		v := b.Get([]byte("t1"))
+		if v == nil {
+			t.Errorf("Task not found in DB")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("DB view error: %v", err)
 	}
 }
