@@ -74,6 +74,31 @@ func queueHandler(db *bbolt.DB) http.HandlerFunc {
 			http.Error(w, "Missing task ID", http.StatusBadRequest)
 			return
 		}
+
+		if len(task.Payload) == 0 {
+			http.Error(w, "Payload cannot be empty", http.StatusBadRequest)
+			return
+		}
+
+		allowedKeys := map[string]bool{
+			"patientName":         true,
+			"ssn":                 true,
+			"dob":                 true,
+			"address":             true,
+			"email":               true,
+			"phone":               true,
+			"diagnosis":           true,
+			"insuranceNumber":     true,
+			"medicalRecordNumber": true,
+		}
+
+		for key := range task.Payload {
+			if !allowedKeys[key] {
+				http.Error(w, fmt.Sprintf("Invalid key %s", key), http.StatusBadRequest)
+				return
+			}
+		}
+
 		if task.CreatedAt.IsZero() {
 			task.CreatedAt = time.Now()
 		}

@@ -222,6 +222,38 @@ func TestQueueHandler_JSONFailure(t *testing.T) {
 	}
 }
 
+func TestQueueHandlerBadPayload(t *testing.T) {
+	task := Task{
+		ID:          "task1",
+		ContainsPHI: true,
+		Payload: map[string]interface{}{
+			"patientName": "Brad",
+			"pirate":      "har har har",
+		},
+	}
+	body, _ := json.Marshal(task)
+	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler := queueHandler(db)
+	handler(rec, req)
+
+	result := rec.Result()
+	defer result.Body.Close()
+
+	if result.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", result.StatusCode)
+	}
+
+	respBody, _ := io.ReadAll(result.Body)
+
+	// fmt.Println(string(respBody))
+	if !strings.Contains(string(respBody), "Invalid key") {
+		t.Errorf("Didn't get the expected error message")
+	}
+
+}
+
 func setupTestDB(t *testing.T) *bolt.DB {
 	t.Helper()
 	tmpDir := t.TempDir()
