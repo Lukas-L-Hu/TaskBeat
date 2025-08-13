@@ -147,7 +147,9 @@ func TestQueueHandler_Success(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	queueHandler(rec, req)
+	handler := queueHandler(db)
+
+	handler(rec, req)
 
 	result := rec.Result()
 	defer result.Body.Close()
@@ -183,7 +185,8 @@ func TestQueueHandler_Failure(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	queueHandler(rec, req)
+	handler := queueHandler(db)
+	handler(rec, req)
 
 	result := rec.Result()
 	defer result.Body.Close()
@@ -203,7 +206,8 @@ func TestQueueHandler_JSONFailure(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader([]byte(invalidJSON)))
 	rec := httptest.NewRecorder()
 
-	queueHandler(rec, req)
+	handler := queueHandler(db)
+	handler(rec, req)
 
 	result := rec.Result()
 	defer result.Body.Close()
@@ -255,7 +259,9 @@ func TestQueueHandler_DBIntegration(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	queueHandler(rec, req)
+	handler := queueHandler(db)
+	handler(rec, req)
+
 	res := rec.Result()
 	defer res.Body.Close()
 

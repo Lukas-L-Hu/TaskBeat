@@ -61,42 +61,43 @@ func auditLog(task Task) error {
 	return err
 }
 
-func queueHandler(w http.ResponseWriter, r *http.Request) {
-	// Handles incoming POST requests to the queue and it expects a JSON that contains a Task object.
-	var task Task
-	err := json.NewDecoder(r.Body).Decode(&task)
-	if err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
+func queueHandler(db *bbolt.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var task Task
+		err := json.NewDecoder(r.Body).Decode(&task)
+		if err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		if task.ID == "" {
+			http.Error(w, "Missing task ID", http.StatusBadRequest)
+			return
+		}
+		if task.CreatedAt.IsZero() {
+			task.CreatedAt = time.Now()
+		}
+
+		concealPHI(&task)
+
+		if err := auditLog(task); err != nil {
+			log.Printf("TaskBeat: Failed audit log: %v\n", err)
+		}
+
+		err = db.Update(func(tx *bbolt.Tx) error {
+			b := tx.Bucket([]byte("Tasks"))
+			data, _ := json.Marshal(task)
+			return b.Put([]byte(task.ID), data)
+		})
+
+		if err != nil {
+			http.Error(w, "Failed to save task", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(task)
 	}
-
-	if task.ID == "" {
-		http.Error(w, "Missing task ID", http.StatusBadRequest)
-		return
-	}
-	if task.CreatedAt.IsZero() {
-		task.CreatedAt = time.Now()
-	}
-
-	concealPHI(&task)
-
-	if err := auditLog(task); err != nil {
-		log.Printf("TaskBeat: Failed audit log: %v\n", err)
-	}
-
-	err = db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte("Tasks"))
-		data, _ := json.Marshal(task)
-		return b.Put([]byte(task.ID), data)
-	})
-
-	if err != nil {
-		http.Error(w, "Failed to save task", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(task)
 }
 
 func main() {
@@ -111,7 +112,7 @@ func main() {
 		_, err := tx.CreateBucketIfNotExists([]byte("Tasks"))
 		return err
 	})
-	http.HandleFunc("/queue", queueHandler)
+	http.HandleFunc("/queue", queueHandler(db))
 	fmt.Println("TaskBeat running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
