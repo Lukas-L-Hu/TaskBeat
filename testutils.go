@@ -18,5 +18,14 @@ func TestDB(t *testing.T) *bolt.DB {
 		t.Fatalf("Failed to open BoltDB: %v", err)
 	}
 
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte("Tasks"))
+		return err
+	})
+
+	if err != nil {
+		t.Fatalf("Failed to create bucket %v", err)
+	}
+
 	return db
 }

@@ -328,3 +328,53 @@ func TestQueueHandler_DBIntegration(t *testing.T) {
 		t.Fatalf("DB view error: %v", err)
 	}
 }
+
+func TestQueueHandler_Integration(t *testing.T) {
+	db := TestDB(t)
+	defer db.Close()
+
+	handler := queueHandler(db)
+
+	task := Task{
+		ID:          "integration1",
+		ContainsPHI: true,
+		Payload: map[string]interface{}{
+			"patientName": "Angela",
+			"phone":       "9491203489",
+		},
+	}
+
+	body, _ := json.Marshal(task)
+	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	result := rec.Result()
+	defer result.Body.Close()
+
+	if result.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200 OK, got %d", result.StatusCode)
+	}
+
+	respBody, _ := io.ReadAll(result.Body)
+	var returned Task
+	if err := json.Unmarshal(respBody, &returned); err != nil {
+		t.Fatalf("Failed to unmarshall response: %v", err)
+	}
+
+	if returned.Payload["patientName"] != "[CONCEALED]" {
+		t.Errorf("Patient Name was not concealed, got %v instead", returned.Payload["patientName"])
+	}
+
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Tasks"))
+		v := b.Get([]byte("integration1"))
+		if v == nil {
+			t.Errorf("Task not found in DB")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("DB view error: %v", err)
+	}
+}
