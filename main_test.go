@@ -379,6 +379,62 @@ func TestQueueHandler_Integration(t *testing.T) {
 	}
 }
 
+func TestQueueHandler_IntegrationII(t *testing.T) {
+	db := TestDB(t)
+	defer db.Close()
+
+	handler := queueHandler(db)
+
+	task := Task{
+		ID:          "integration2",
+		ContainsPHI: true,
+		Payload: map[string]interface{}{
+			"patientName": "Angela",
+			"phone":       "9491203489",
+			"dob":         "6/7/2001",
+			"diagnosis":   "Herpes",
+		},
+	}
+
+	body, _ := json.Marshal(task)
+	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	result := rec.Result()
+	defer result.Body.Close()
+
+	if result.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200 OK, got %d", result.StatusCode)
+	}
+
+	respBody, _ := io.ReadAll(result.Body)
+	var returned Task
+	if err := json.Unmarshal(respBody, &returned); err != nil {
+		t.Fatalf("Failed to unmarshall response: %v", err)
+	}
+
+	if returned.Payload["diagnosis"] != "[CONCEALED]" {
+		t.Errorf("Patient Name was not concealed, got %v instead", returned.Payload["patientName"])
+	}
+
+	if returned.Payload["dob"] != "[CONCEALED]" {
+		t.Errorf("Date of Birth was not concealed, got %v instead", returned.Payload["dob"])
+	}
+
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Tasks"))
+		v := b.Get([]byte("integration2"))
+		if v == nil {
+			t.Errorf("Task not found in DB")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("DB view error: %v", err)
+	}
+}
+
 func TestQueueHandler_IntegrationFailure(t *testing.T) {
 	db := TestDB(t)
 	defer db.Close()
@@ -433,6 +489,36 @@ func TestQueueHandler_IntegrationFailure2(t *testing.T) {
 
 	if result.StatusCode != http.StatusBadRequest {
 		t.Fatalf("Invalid JSON and expected status 400 Bad Request, got %d", result.StatusCode)
+	}
+
+}
+
+func TestQueueHandler_IntegrationFailure3(t *testing.T) {
+	db := TestDB(t)
+
+	handler := queueHandler(db)
+
+	db.Close()
+
+	task := Task{
+		ID:          "test",
+		ContainsPHI: true,
+		Payload: map[string]interface{}{
+			"patientName": "Angela",
+			"phone":       "9491203489",
+		},
+	}
+
+	body, _ := json.Marshal(task)
+	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	result := rec.Result()
+	defer result.Body.Close()
+
+	if result.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("Expected status 500 Internal Server Error, got %d", result.StatusCode)
 	}
 
 }
