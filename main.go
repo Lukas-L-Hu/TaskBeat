@@ -61,6 +61,42 @@ func auditLog(task Task) error {
 	return err
 }
 
+func validateTask(task Task) error {
+	if task.ID == "" {
+		return fmt.Errorf("missing task ID")
+	}
+	if len(task.Payload) == 0 {
+		return fmt.Errorf("payload cannot be empty")
+	}
+
+	allowedKeys := map[string]bool{
+		"patientName":         true,
+		"ssn":                 true,
+		"dob":                 true,
+		"address":             true,
+		"email":               true,
+		"phone":               true,
+		"diagnosis":           true,
+		"insuranceNumber":     true,
+		"medicalRecordNumber": true,
+	}
+
+	for key := range task.Payload {
+		if !allowedKeys[key] {
+			return fmt.Errorf("invalid key %s", key)
+		}
+	}
+	return nil
+}
+
+func saveTask(db *bbolt.DB, task Task) error {
+	return db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("Tasks"))
+		data, _ := json.Marshal(task)
+		return b.Put([]byte(task.ID), data)
+	})
+}
+
 func queueHandler(db *bbolt.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var task Task
@@ -70,33 +106,9 @@ func queueHandler(db *bbolt.DB) http.HandlerFunc {
 			return
 		}
 
-		if task.ID == "" {
-			http.Error(w, "Missing task ID", http.StatusBadRequest)
+		if err := validateTask(task); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
-		}
-
-		if len(task.Payload) == 0 {
-			http.Error(w, "Payload cannot be empty", http.StatusBadRequest)
-			return
-		}
-
-		allowedKeys := map[string]bool{
-			"patientName":         true,
-			"ssn":                 true,
-			"dob":                 true,
-			"address":             true,
-			"email":               true,
-			"phone":               true,
-			"diagnosis":           true,
-			"insuranceNumber":     true,
-			"medicalRecordNumber": true,
-		}
-
-		for key := range task.Payload {
-			if !allowedKeys[key] {
-				http.Error(w, fmt.Sprintf("Invalid key %s", key), http.StatusBadRequest)
-				return
-			}
 		}
 
 		if task.CreatedAt.IsZero() {
@@ -109,13 +121,7 @@ func queueHandler(db *bbolt.DB) http.HandlerFunc {
 			log.Printf("TaskBeat: Failed audit log: %v\n", err)
 		}
 
-		err = db.Update(func(tx *bbolt.Tx) error {
-			b := tx.Bucket([]byte("Tasks"))
-			data, _ := json.Marshal(task)
-			return b.Put([]byte(task.ID), data)
-		})
-
-		if err != nil {
+		if err := saveTask(db, task); err != nil {
 			http.Error(w, "Failed to save task", http.StatusInternalServerError)
 			return
 		}

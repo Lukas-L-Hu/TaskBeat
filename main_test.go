@@ -174,6 +174,9 @@ func TestQueueHandler_Success(t *testing.T) {
 }
 
 func TestQueueHandler_Failure(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
 	task := Task{
 		ContainsPHI: true,
 		Payload: map[string]interface{}{
@@ -196,7 +199,7 @@ func TestQueueHandler_Failure(t *testing.T) {
 	}
 
 	respBody, _ := io.ReadAll(result.Body)
-	if !strings.Contains(string(respBody), "Missing") {
+	if !strings.Contains(string(respBody), "missing") {
 		t.Errorf("Didn't get the expected error message")
 	}
 }
@@ -248,7 +251,7 @@ func TestQueueHandlerBadPayload(t *testing.T) {
 	respBody, _ := io.ReadAll(result.Body)
 
 	// fmt.Println(string(respBody))
-	if !strings.Contains(string(respBody), "Invalid key") {
+	if !strings.Contains(string(respBody), "invalid key") {
 		t.Errorf("Didn't get the expected error message")
 	}
 
