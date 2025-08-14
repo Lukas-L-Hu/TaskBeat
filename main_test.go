@@ -378,3 +378,61 @@ func TestQueueHandler_Integration(t *testing.T) {
 		t.Fatalf("DB view error: %v", err)
 	}
 }
+
+func TestQueueHandler_IntegrationFailure(t *testing.T) {
+	db := TestDB(t)
+	defer db.Close()
+
+	handler := queueHandler(db)
+
+	task := Task{
+		ID:          "integration1",
+		ContainsPHI: true,
+		Payload: map[string]interface{}{
+			"patientName": "Angela",
+			"phone":       "9491203489",
+			"garbageKey":  "garbage",
+		},
+	}
+
+	body, _ := json.Marshal(task)
+	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	result := rec.Result()
+	defer result.Body.Close()
+
+	if result.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Expected status 400 Bad Request, got %d", result.StatusCode)
+	}
+
+}
+
+func TestQueueHandler_IntegrationFailure2(t *testing.T) {
+	db := TestDB(t)
+	defer db.Close()
+
+	handler := queueHandler(db)
+
+	task := Task{
+		ContainsPHI: true,
+		Payload: map[string]interface{}{
+			"patientName": "Angela",
+			"phone":       "9491203489",
+		},
+	}
+
+	body, _ := json.Marshal(task)
+	req := httptest.NewRequest(http.MethodPost, "/queue", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	result := rec.Result()
+	defer result.Body.Close()
+
+	if result.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Invalid JSON and expected status 400 Bad Request, got %d", result.StatusCode)
+	}
+
+}
