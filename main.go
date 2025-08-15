@@ -12,6 +12,7 @@ import (
 )
 
 var db *bbolt.DB
+var taskQueue chan Task
 
 type Task struct {
 	ID          string                 `json:"id"`
@@ -39,9 +40,11 @@ func concealPHI(task *Task) {
 	}
 
 	for _, key := range infoKeys {
-		if _, ok := task.Payload[key].(string); ok {
-			task.Payload[key] = "[CONCEALED]"
-			log.Printf("TaskBeat: Concealed %s for Task ID %s\n", key, task.ID)
+		if val, exists := task.Payload[key]; exists {
+			if _, isStr := val.(string); isStr {
+				task.Payload[key] = "[CONCEALED]"
+				log.Printf("TaskBeat: Concealed %s for Task ID %s\n", key, task.ID)
+			}
 		}
 	}
 }
@@ -97,11 +100,22 @@ func saveTask(db *bbolt.DB, task Task) error {
 	})
 }
 
-func queueHandler(db *bbolt.DB) http.HandlerFunc {
+func worker(db *bbolt.DB, tasks <-chan Task) {
+	for task := range tasks {
+		concealPHI(&task)
+		if err := auditLog(task); err != nil {
+			log.Printf("TaskBeat: Failed audit log: %v\n", err)
+		}
+		if err := saveTask(db, task); err != nil {
+			log.Printf("TaskBeat: Failed to save Task ID %s: %v", task.ID, err)
+		}
+	}
+}
+
+func queueHandler(db *bbolt.DB, taskQueue chan Task) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var task Task
-		err := json.NewDecoder(r.Body).Decode(&task)
-		if err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&task); err != nil {
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
 			return
 		}
@@ -115,35 +129,50 @@ func queueHandler(db *bbolt.DB) http.HandlerFunc {
 			task.CreatedAt = time.Now()
 		}
 
-		concealPHI(&task)
-
-		if err := auditLog(task); err != nil {
-			log.Printf("TaskBeat: Failed audit log: %v\n", err)
+		if task.ContainsPHI {
+			concealPHI(&task)
 		}
 
-		if err := saveTask(db, task); err != nil {
-			http.Error(w, "Failed to save task", http.StatusInternalServerError)
+		taskQueue <- task
+
+		if err := db.Update(func(tx *bbolt.Tx) error {
+			b, err := tx.CreateBucketIfNotExists([]byte("Tasks"))
+			if err != nil {
+				return err
+			}
+			data, err := json.Marshal(task)
+			if err != nil {
+				return err
+			}
+			return b.Put([]byte(task.ID), data)
+		}); err != nil {
+			http.Error(w, "Failed to store task in DB", http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(task)
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(map[string]string{"status": "task queued"})
 	}
 }
 
 func main() {
 	// Runs everything
-	var err error
-	db, err = bbolt.Open("taskbeat.db", 0600, nil)
+	db, err := bbolt.Open("taskbeat.db", 0600, nil)
 	if err != nil {
 		log.Fatalf("Couldn't open db: %v", err)
 	}
 	defer db.Close()
-	db.Update(func(tx *bbolt.Tx) error {
+	if err := db.Update(func(tx *bbolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte("Tasks"))
 		return err
-	})
-	http.HandleFunc("/queue", queueHandler(db))
+	}); err != nil {
+		log.Fatalf("Couldn't create bucket: %v", err)
+	}
+
+	taskQueue = make(chan Task, 100)
+	go worker(db, taskQueue)
+	http.HandleFunc("/queue", queueHandler(db, taskQueue))
 	fmt.Println("TaskBeat running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
